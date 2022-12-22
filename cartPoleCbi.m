@@ -1,8 +1,8 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Title: Cart-pole CbI simulation example for "Total energy-shaping control for mechanical systems via Control-by-Interconnection"
 % Authour: Joel Ferguson
-% Date 12-August-2022
-% Version: 1.0
+% Date 22-Dec-2022
+% Version: 1.1
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 clear
 clc
@@ -28,7 +28,7 @@ M = @(q) [mc+mp, mp*lp*cos(q(2));
 Mi_int = matlabFunction(inv(M(q_sym)),'vars',q_sym);
 Mi = @(q) Mi_int(q(1),q(2));
 m11 = @(q) mat_idx(Mi(q),1,1);
-m12 = @(q) mat_idx(Mi(q),1,2);
+m21 = @(q) mat_idx(Mi(q),2,1);
 m22 = @(q) mat_idx(Mi(q),2,2);
 % Gradient of mass matrix
 T = @(q,p) 0.5*p.'*(M(q)\p);
@@ -63,33 +63,33 @@ ma11 = @(q) 0;
 dma11dq2_int = matlabFunction(diff(ma11(q_sym),q2),'vars',q_sym);
 dma11dq2 = @(q) dma11dq2_int(q(1),q(2));
 
-% Choose values for ma12, ma22 at the origin
-ma12_0 = -2;
+% Choose values for ma21, ma22 at the origin
+ma21_0 = -2;
 ma22_0 = 8;
 
 % Define functions s1, s2, s3
-s1_ma = @(q,ma12,ma22) (m22(q)+ma22) - ((m12(q)+ma12)/(m11(q)+ma11(q)))*(m12(q)+ma12);
-s2_ma = @(q,ma12,ma22) ((m12(q)+ma12)/(m11(q)+ma11(q)))*m11(q) - m12(q);
-s3_ma = @(q,ma12,ma22) ((m12(q)+ma12)/(m11(q)+ma11(q)))*m12(q) - m22(q);
+s1_ma = @(q,ma21,ma22) (m22(q)+ma22) - ((m21(q)+ma21)/(m11(q)+ma11(q)))*(m21(q)+ma21);
+s2_ma = @(q,ma21,ma22) ((m21(q)+ma21)/(m11(q)+ma11(q)))*m11(q) - m21(q);
+s3_ma = @(q,ma21,ma22) ((m21(q)+ma21)/(m11(q)+ma11(q)))*m21(q) - m22(q);
 
 % Verify that s1() > 0 at q = 0
 q_0 = [0; 0];
-s1_0 = s1_ma(q_0, ma12_0, ma22_0)
+s1_0 = s1_ma(q_0, ma21_0, ma22_0)
 
 % Verify that s3() > 0 at q = 0
-s3_0 = s3_ma(q_0, ma12_0, ma22_0)
+s3_0 = s3_ma(q_0, ma21_0, ma22_0)
 
 % Verify that the minimum eigenvalue of Mi + Mai > 0. This is true if s1 >
 % 0
-Mdi_min_eig = min(eig(Mi(q_0) + [ma11(q_0) ma12_0; ma12_0 ma22_0]))
+Mdi_min_eig = min(eig(Mi(q_0) + [ma11(q_0) ma21_0; ma21_0 ma22_0]))
 
 
 %% Solve kinetic energy PDE
 % Construct symbolic expression for Mai and gradients
-syms ma12 ma22
-syms dma12dq2_sym dma22dq2_sym 
-Mai_sym = @(q) [ma11(q) ma12; ma12 ma22];
-dMaidq2_sym = @(q) [dma11dq2(q) dma12dq2_sym; dma12dq2_sym dma22dq2_sym];
+syms ma21 ma22
+syms dma21dq2_sym dma22dq2_sym 
+Mai_sym = @(q) [ma11(q) ma21; ma21 ma22];
+dMaidq2_sym = @(q) [dma11dq2(q) dma21dq2_sym; dma21dq2_sym dma22dq2_sym];
 dMaipdq_sym = @(q,p) [zeros(2,1) dMaidq2_sym(q)*p];
 
 % Construct gradients of Mi
@@ -100,7 +100,7 @@ dMipdq = @(q,p) dMipdq_int(q(1),q(2),p(1),p(2));
 Y_sym = @(q,p) 0.5*Mi(q)*dMaipdq_sym(q,p).' - 0.5*dMipdq(q,p)*Mai_sym(q);
 
 % Define D matrix
-D = @(q) [((m12(q)+ma12)/(m11(q)+ma11(q))) -1];
+D = @(q) [((m21(q)+ma21)/(m11(q)+ma11(q))) -1];
 
 % Construct kinetic energy matching equation
 constraint_full = D(q_sym)*(Y_sym(q_sym,p_sym) + Y_sym(q_sym,p_sym).')*D(q_sym).';
@@ -108,19 +108,19 @@ constraint_full = D(q_sym)*(Y_sym(q_sym,p_sym) + Y_sym(q_sym,p_sym).')*D(q_sym).
 constraint_component = jacobian(constraint_full,p_sym);
 % Resolve matching equations into an ODE. Note that this could be solved
 % implicitly rather then resolving explicitly
-ODEs = solve([constraint_component(1); constraint_component(2)],[dma12dq2_sym; dma22dq2_sym]);
+ODEs = solve([constraint_component(1); constraint_component(2)],[dma21dq2_sym; dma22dq2_sym]);
 % Convert symbolic ODEs into functions
-dma12dq2_int = matlabFunction(ODEs.dma12dq2_sym,'vars',[q2; ma12; ma22]);
-dma22dq2_int = matlabFunction(ODEs.dma22dq2_sym,'vars',[q2; ma12; ma22]);
-% Construct matching ODE with q2 as the independent variable and ma12, ma22
+dma21dq2_int = matlabFunction(ODEs.dma21dq2_sym,'vars',[q2; ma21; ma22]);
+dma22dq2_int = matlabFunction(ODEs.dma22dq2_sym,'vars',[q2; ma21; ma22]);
+% Construct matching ODE with q2 as the independent variable and ma21, ma22
 % as the states
-dmadq2 = @(q2,ma) [dma12dq2_int(q2, ma(1), ma(2)); dma22dq2_int(q2, ma(1), ma(2))];
+dmadq2 = @(q2,ma) [dma21dq2_int(q2, ma(1), ma(2)); dma22dq2_int(q2, ma(1), ma(2))];
 
 % Solve kinetic energy matching equations on the two half spaces [0,pi/2],
-% [0,-pi/2]. In both cases, the initial conditions for ma12_0, ma22_0
+% [0,-pi/2]. In both cases, the initial conditions for ma21_0, ma22_0
 % should be used.
 options = odeset('RelTol',1e-6,'MaxStep',0.01);
-ma0 = [ma12_0; ma22_0];
+ma0 = [ma21_0; ma22_0];
 % Solve kinetic energy ODE on the half-space [0,pi/2]
 q2_range = [0 pi/2];
 [q2_num_1, ma_num_1] = ode23s(dmadq2, q2_range, ma0, options);
@@ -131,18 +131,18 @@ q2_range = [0 -pi/2];
 % Merge solutions from the two half-spaces. Note that the initial point is
 % common between both datasets and should be removed from one.
 q2_num_KE = [flip(q2_num_2); q2_num_1(2:end)];
-ma12_num = [flip(ma_num_2(:,1)); ma_num_1(2:end,1)];
+ma21_num = [flip(ma_num_2(:,1)); ma_num_1(2:end,1)];
 ma22_num = [flip(ma_num_2(:,2)); ma_num_1(2:end,2)];
 
-% Generate functions for ma12, ma22 by interpolating numerical solutions
-ma12 = @(q) interp1(q2_num_KE,ma12_num,q(2));
+% Generate functions for ma21, ma22 by interpolating numerical solutions
+ma21 = @(q) interp1(q2_num_KE,ma21_num,q(2));
 ma22 = @(q) interp1(q2_num_KE,ma22_num,q(2));
 
 % Construct function for inverse added mass matrix
-Mai = @(q) [ma11(q) ma12(q); ma12(q) ma22(q)];
+Mai = @(q) [ma11(q) ma21(q); ma21(q) ma22(q)];
 
 % Create functions for gradients of Mai using the computed solutions
-dMaidq2 = @(q) [dma11dq2(q) dma12dq2_int(q(2),ma12(q),ma22(q)); dma12dq2_int(q(2),ma12(q),ma22(q)) dma22dq2_int(q(2),ma12(q),ma22(q))];
+dMaidq2 = @(q) [dma11dq2(q) dma21dq2_int(q(2),ma21(q),ma22(q)); dma21dq2_int(q(2),ma21(q),ma22(q)) dma22dq2_int(q(2),ma21(q),ma22(q))];
 dMaipdq = @(q,p) [zeros(2,1) dMaidq2(q)*p];
 
 % Compute eigenvalues of Mi + Mai on domian to determine on which domain
@@ -151,7 +151,7 @@ eig_vals = zeros(2,length(q2_num_KE));
 ma11_val = zeros(1,length(q2_num_KE));
 for i=1:length(q2_num_KE)
     ma11_val(i) = ma11([0;q2_num_KE(i)]);
-    eig_vals(:,i) = eig(Mi([0;q2_num_KE(i)]) + [ma11([0;q2_num_KE(i)]), ma12([0;q2_num_KE(i)]); ma12([0;q2_num_KE(i)]), ma22([0;q2_num_KE(i)])]);
+    eig_vals(:,i) = eig(Mi([0;q2_num_KE(i)]) + [ma11([0;q2_num_KE(i)]), ma21([0;q2_num_KE(i)]); ma21([0;q2_num_KE(i)]), ma22([0;q2_num_KE(i)])]);
 end
 
 % Plot results
@@ -161,7 +161,7 @@ subplot(1,2,1)
 plot(q2_num_KE,ma11_val)
 ylim([-2.5 8.5])
 hold on
-plot(q2_num_KE,ma12_num)
+plot(q2_num_KE,ma21_num)
 plot(q2_num_KE,ma22_num)
 grid on
 legend('m_{a11}','m_{a12}','m_{a22}')
@@ -180,9 +180,9 @@ set(findall(fig1,'type','line'),'linewidth',2.0)
 
 %% Construct closed-loop potential energy function Vm
 % Define functions s1, s2, s3 using solutions to kinetic energy PDE
-s1 = @(q) s1_ma(q,ma12(q),ma22(q));
-s2 = @(q) s2_ma(q,ma12(q),ma22(q));
-s3 = @(q) s3_ma(q,ma12(q),ma22(q));
+s1 = @(q) s1_ma(q,ma21(q),ma22(q));
+s2 = @(q) s2_ma(q,ma21(q),ma22(q));
+s3 = @(q) s3_ma(q,ma21(q),ma22(q));
 
 % Build potential energy ODE
 dVmdq2 = @(q) -(s1(q)/s3(q))*Gp*dVdq(q);
@@ -292,9 +292,9 @@ Y = @(q,p) 0.5*Mi(q)*dMaipdq(q,p).' - 0.5*dMipdq(q,p)*Mai(q);
 J11 = 0;
 J22 = 0;
 Y11 = @(q,p) mat_idx(Y(q,p),1,1);
-Y12 = @(q,p) mat_idx(Y(q,p),1,2);
-J12 = @(q,p) ((ma12(q) + m12(q))/(ma11(q) + m11(q)))*(J11 - Y11(q,p)) + Y12(q,p);
-J = @(q,p) [J11 -J12(q,p).'; J12(q,p) J22];
+Y21 = @(q,p) mat_idx(Y(q,p),2,1);
+J21 = @(q,p) ((ma21(q) + m21(q))/(ma11(q) + m11(q)))*(J11 - Y11(q,p)) + Y21(q,p);
+J = @(q,p) [J11 -J21(q,p).'; J21(q,p) J22];
 
 % Construct A, B, C
 A = @(q,p) Mi(q)*p;
